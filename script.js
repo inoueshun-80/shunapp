@@ -95,13 +95,20 @@ function endDrawing() {
 
 function getMousePos(e) {
   const rect = canvas.getBoundingClientRect();
-  return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  // キャンバスの内部サイズ(width=600)と実際の表示サイズの比率を計算してズレを直す
+  return {
+    x: (e.clientX - rect.left) * (canvas.width / rect.width),
+    y: (e.clientY - rect.top) * (canvas.height / rect.height),
+  };
 }
 
 function getTouchPos(e) {
   const rect = canvas.getBoundingClientRect();
-  const touch = e.touches[0];
-  return { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
+  const touch = e.touches[0]; // バグ予防: [0]を明記
+  return {
+    x: (touch.clientX - rect.left) * (canvas.width / rect.width),
+    y: (touch.clientY - rect.top) * (canvas.height / rect.height),
+  };
 }
 
 function startDefensePhase() {
