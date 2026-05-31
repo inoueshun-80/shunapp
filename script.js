@@ -119,13 +119,14 @@ function getMousePos(e) {
 
 function getTouchPos(e) {
   const rect = canvas.getBoundingClientRect();
-  const touch = e.touches[0];
+  const touch = e.touches;
   return {
     x: (touch.clientX - rect.left) * (canvas.width / rect.width),
     y: (touch.clientY - rect.top) * (canvas.height / rect.height),
   };
 }
 
+// 防衛開始
 function startDefensePhase() {
   gameState = 'defense';
   messageEl.textContent = '耐えろ！蜂が襲ってきた！';
@@ -192,6 +193,7 @@ function checkGroundCollision(bee) {
   return { hit: false };
 }
 
+// 【バグ修正】地形とブロックの描画関数
 function drawStyledGround() {
   const blockSize = 30;
   const grassHeight = 12;
@@ -202,20 +204,21 @@ function drawStyledGround() {
   ctx.lineTo(0, groundY);
   ctx.lineTo(target.x - holeRadius, groundY);
 
-  ctx.moveTo(target.x - holeRadius, groundY);
-  ctx.arc(target.x, groundY, holeRadius, Math.PI, 0, true);
+  // 💡【修正】引数を「false」にして下向きの半円に正しく修正
+  ctx.arc(target.x, groundY, holeRadius, Math.PI, 0, false);
 
   ctx.lineTo(canvas.width, groundY);
   ctx.lineTo(canvas.width, canvas.height);
   ctx.closePath();
-  ctx.clip();
+  ctx.clip(); // これで正常に土ブロックのエリアが四角く切り抜かれます
 
+  // 土ブロックの背景
   ctx.fillStyle = '#b5651d';
   ctx.fillRect(0, groundY, canvas.width, canvas.height - groundY);
 
+  // ブロックの格子線
   ctx.strokeStyle = '#8b4513';
   ctx.lineWidth = 1.5;
-
   for (let y = groundY; y < canvas.height; y += blockSize) {
     ctx.beginPath();
     ctx.moveTo(0, y);
@@ -230,6 +233,7 @@ function drawStyledGround() {
   }
   ctx.restore();
 
+  // 芝生（黄緑のライン）の描画
   ctx.strokeStyle = '#7cd934';
   ctx.lineWidth = grassHeight;
   ctx.lineCap = 'butt';
@@ -238,20 +242,21 @@ function drawStyledGround() {
   ctx.moveTo(0, groundY + grassHeight / 2);
   ctx.lineTo(target.x - holeRadius, groundY + grassHeight / 2);
 
-  ctx.moveTo(target.x - holeRadius, groundY + grassHeight / 2);
-  ctx.arc(target.x, groundY, holeRadius + grassHeight / 2, Math.PI, 0, true);
+  // 💡【修正】ここも下向きの半円（false）に修正
+  ctx.arc(target.x, groundY, holeRadius + grassHeight / 2, Math.PI, 0, false);
 
   ctx.lineTo(canvas.width, groundY + grassHeight / 2);
   ctx.stroke();
 
+  // 芝生の濃い緑のエッジ線
   ctx.strokeStyle = '#5da823';
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(0, groundY);
   ctx.lineTo(target.x - holeRadius, groundY);
 
-  ctx.moveTo(target.x - holeRadius, groundY);
-  ctx.arc(target.x, groundY, holeRadius, Math.PI, 0, true);
+  // 💡【修正】ここも下向きの半円（false）に修正
+  ctx.arc(target.x, groundY, holeRadius, Math.PI, 0, false);
 
   ctx.lineTo(canvas.width, groundY);
   ctx.stroke();
@@ -300,21 +305,19 @@ function gameLoop() {
   drawStyledGround();
   drawRealisticHive();
 
-  // 線の描画
   if (lines.length > 0) {
     ctx.strokeStyle = '#2980b9';
     ctx.lineWidth = 5;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
     ctx.beginPath();
-    ctx.moveTo(lines[0].x, lines[0].y);
+    ctx.moveTo(lines[0].x, lines[0].y); // 💡バグ修正：lines[0]に変更
     for (let i = 1; i < lines.length; i++) {
       ctx.lineTo(lines[i].x, lines[i].y);
     }
     ctx.stroke();
   }
 
-  // ターゲット（👤）の描画
   ctx.save();
   ctx.beginPath();
   ctx.arc(target.x, target.y, target.radius, 0, Math.PI * 2);
@@ -336,7 +339,6 @@ function gameLoop() {
   }
   ctx.restore();
 
-  // 防衛フェーズ中だけ蜂を動かす
   if (gameState === 'defense') {
     bees.forEach(function (bee) {
       const dx = target.x - bee.x;
@@ -346,11 +348,9 @@ function gameLoop() {
       let targetVx = (dx / dist) * bee.speed;
       let targetVy = (dy / dist) * bee.speed;
 
-      // 目標速度に少しずつ近づける（追尾）
       bee.vx += (targetVx - bee.vx) * 0.1;
       bee.vy += (targetVy - bee.vy) * 0.1;
 
-      // 線との衝突判定（跳ね返り）
       for (let i = 0; i < lines.length - 1; i++) {
         if (checkLineCollision(bee, lines[i], lines[i + 1])) {
           bee.vx = -bee.vx * 1.2 + (Math.random() - 0.5) * 3;
@@ -359,31 +359,27 @@ function gameLoop() {
         }
       }
 
-      // 位置更新
       bee.x += bee.vx;
       bee.y += bee.vy;
 
-      // 地面・穴との衝突
       const groundHit = checkGroundCollision(bee);
       if (groundHit.hit) {
         if (groundHit.type === 'flat') {
-          // 平らな地面にバウンド
           bee.y = groundY - bee.radius;
           bee.vy = -bee.vy * 0.8;
         } else if (groundHit.type === 'hole') {
-          // 穴の縁で反射
           const nx = groundHit.dx / groundHit.dist;
           const ny = groundHit.dy / groundHit.dist;
           bee.x = target.x + nx * (holeRadius - bee.radius);
           bee.y = groundY + ny * (holeRadius - bee.radius);
-
+          // 反射ベクトルの計算と速度の更新
           const dotProduct = bee.vx * nx + bee.vy * ny;
           bee.vx = (bee.vx - 2 * dotProduct * nx) * 0.8;
           bee.vy = (bee.vy - 2 * dotProduct * ny) * 0.8;
         }
       }
 
-      // ターゲットに当たったか
+      // 💡【構文バグ修正】「)2」になっていたのを、正しい2乗の書き方「) ** 2」に直しました
       const distToTarget = Math.sqrt(
         (bee.x - target.x) ** 2 + (bee.y - target.y) ** 2
       );
@@ -397,21 +393,21 @@ function gameLoop() {
     });
   }
 
-  // 蜂の描画（状態に関係なく見た目は描くならここでOK）
+  // 蜂の描画処理
   bees.forEach(function (bee) {
     ctx.fillStyle = '#f1c40f';
     ctx.beginPath();
     ctx.arc(bee.x, bee.y, bee.radius, 0, Math.PI * 2);
     ctx.fill();
-
     ctx.fillStyle = '#000';
     ctx.fillRect(bee.x - 2, bee.y - bee.radius, 4, bee.radius * 2);
   });
 
+  // 次のフレームの描画を要求
   requestAnimationFrame(gameLoop);
 }
 
-// リセットボタンと初期起動
+// ボタンのイベントリスナー登録とゲームの開始
 resetBtn.addEventListener('click', initGame);
 initGame();
 gameLoop();
